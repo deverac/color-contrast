@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Color contrast models</title>
+<style type='text/css'>
+#ltlEnd, #bigEnd {
+    display: inline-block;
+    border: solid 1px black;
+}
+html {
+    font-family: sans-serif;
+    background-color: lightblue;
+}
+.cell {
+    width: 26px;
+    height: 26px;
+    display: inline-block;
+}
+#bigEnd .color {
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+}
+#ltlEnd .color {
+    text-align: center;
+    cursor: default;
+    user-select: none;
+}
+.subtitle {
+    text-align: center;
+    /* Setting a size, zoom, line-height opens a thin line between rows which separates colors. */
+    font-family: 'Liberation Sans Narrow', sans-serif;
+}
+.xTitle, .yTitle {
+    text-align: center;
+}
+pre {
+    border: solid 1px black;
+    background-color: lightgray;
+    display: inline-block;
+    margin-left: 2em;
+    padding: 0.5em;
+}
+.params th {
+    text-align: right;
+}
+.shape {
+    width: 150px;
+}
+.desc {
+    font-size: smaller;
+    font-style: italic;
+}
+.method {
+    margin-top: 1em;
+    padding-left: 10px;
+    padding-right: 10px;
+    border: solid 3px black;
+}
+.timings th {
+    text-align: center;
+}
+.timings td {
+    text-align: right;
+}
+.timings td:first-child {
+    text-align: left;
+}
+</style>
+<script type='text/javascript'>
+var bigEnd;
+var ltlEnd;
+
+var bigR = 0;
+var bigG = 0;
+var bigB = 0;
+
+//const CONTENT = '&bull;';
+const CONTENT = '&#x25cf';
+const BLANK = '&nbsp;';
+
+const LOOKUP = [];
+
+const WHITE = '#ffffff';
+const BLACK = '#000000';
+
+function relativeLuminance(r, g, b) {
+    const n = [r, g, b].map(v => {
+        var c = v / 255.0;
+        if (c <= 0.03928) {
+            c = c / 12.92;
+        } else {
+            c = Math.pow( ((c+0.055)/1.055),  2.4);
+        }
+        return c;
+    });
+    return (0.2126 * n[0]) + (0.7152 * n[1]) + (0.0722 * n[2]);
+}
+
+function not(n) {
+    return (~n) & 0xFF;
+}
+
+
+
+
+
+
+
+function contrastBitwiseNot(r, g, b) {
+    const R = not(r);
+    const G = not(g);
+    const B = not(b);
+    return '#' + [R, G, B].map(v => toHex(v)).join('');
+}
+
+function contrastColor(r, g, b) {
+    const str = document.getElementById('color').value || '';
+    const n = parseInt(str, 16) || 0;
+    return '#' + ('00000'+Number(n).toString(16)).slice(-6);
+}
+
+function contrastCone(r, g, b) {
+    const coneRadius = parseFloat(document.getElementById('radius').value) || 0.6;
+    const coneHeight = parseFloat(document.getElementById('height').value) || 2;
+
+    const R = Math.pow((r-48)/255, 2);
+    const G = Math.pow(g/255, 2);
+    const B = b/255.0;
+
+    const radius = Math.sqrt(R + G);
+    const scaledRadius = coneRadius * (coneHeight - B)/coneHeight;
+
+    return (radius < scaledRadius ? WHITE : BLACK);
+}
+
+
+function contrastCylinder(r, g, b) {
+    const str = document.getElementById('radius').value || '';
+
+    const radius = parseFloat(str) || 0.6;
+    const R = Math.pow(r/255, 2);
+    const G = Math.pow(g/255, 2);
+    const B = 0;
+
+    const dist = Math.sqrt(R + G + B);
+    return (dist <= radius ? WHITE : BLACK);
+}
+
+
+function contrastDistance(r, g, b) {
+    const Rb = Math.pow(r, 2);
+    const Gb = Math.pow(g, 2);
+    const Bb = Math.pow(b, 2);
+
+    const Rw = Math.pow(r-255, 2);
+    const Gw = Math.pow(g-255, 2);
+    const Bw = Math.pow(b-255, 2);
+
+    const distB = Rb + Gb + Bb;
+    const distW = Rw + Gw + Bw;
+    return (distB < distW ? WHITE : BLACK);
+}
+
+function contrastSphere(r, g, b) {
+    const str = document.getElementById('radius').value || '';
+
+    const radius = parseFloat(str) || 0.95;
+    const R = Math.pow(r/255, 2);
+    const G = Math.pow(g/255, 2);
+    const B = Math.pow(b/255, 2);
+
+    const dist = Math.sqrt(R + G + B);
+    return (dist <= radius ? WHITE : BLACK);
+}
+
+function contrastW3C(r, g, b) {
+    return (relativeLuminance(r, g, b) < 0.179129 ? WHITE : BLACK);
+}
+
+function contrastW3CLookup(r, g, b) {
+    const R = parseInt(r / 16);
+    const G = parseInt(g / 16);
+    const B = Math.max(parseInt(b / 16) - 3, 0);
+    if (G >= 9) return BLACK;
+    return (R < LOOKUP[B][G] ? WHITE : BLACK);
+}
+
+function contrastW3CApprox1(r, g, b) {
+    return (0 < 1167.11538  - 4.90385*r - b - Math.pow(g, 4) / 354921.55062 ? WHITE : BLACK);
+}
+
+function contrastW3CApprox2(r, g, b) {
+    return (0 < 1200 - 5*r - Math.pow(g/24, 4) - b  ? WHITE : BLACK);
+}
+
+
+
+function contrastSlice(r, g, b) {
+    return ((r <= 0xC0 && g <= 0x70) ? WHITE : BLACK);
+}
+
+function getHighestContrast(r, g, b, method) {
+    switch (method) {
+        case 'approx1': return contrastW3CApprox1(r, g, b);
+        case 'approx2': return contrastW3CApprox2(r, g, b);
+        case 'bitwiseNot': return contrastBitwiseNot(r, g, b);
+        case 'color': return contrastColor(r, g, b);
+        case 'cone': return contrastCone(r, g, b);
+        case 'cylinder': return contrastCylinder(r, g, b);
+        case 'distance': return contrastDistance(r, g, b);
+        case 'lookup': return contrastW3CLookup(r, g, b);
+        case 'sphere': return contrastSphere(r, g, b);
+        case 'slice': return contrastSlice(r, g, b);
+        case 'w3c': return contrastW3C(r, g, b);
+        default: return '#888888';
+    }
+}
+
+
+function compareMethods() {
+    const method1 = document.getElementById('method').value;
+    const method2 = document.getElementById('compareMethod').value;
+
+    var diffCnt = 0;
+    for (var r=0; r<256; r+=16) {
+        for (var g=0; g<256; g+=16) {
+            for (var b=0; b<256; b+=16) {
+                const c1 = getHighestContrast(r, g, b, method1);
+                const c2 = getHighestContrast(r, g, b, method2);
+                if (c1 != c2) {
+                    diffCnt++;
+                }
+            }
+        }
+    }
+    // 16^3 = 4096.
+    document.getElementById('diffcnt').innerText = 'Differs by '+diffCnt+' of 4096 squares.';
+}
+
+
+
+
+
+
+
+
+
+
+function gId(id) {
+    return document.getElementById(id);
+}
+function createDiv() {
+    return document.createElement('div');
+}
+
+
+
+function createCells(rowNum) {
+    const div = createDiv();
+    for (var i=0; i<18; i++) {
+        const d = createDiv();
+        d.classList.add('cell');
+        if (i == 1 && rowNum < 16) {
+            d.classList.add('ySubtitle');
+            d.classList.add('subtitle');
+        } else if (i > 1 && rowNum == 16) {
+            d.classList.add('xSubtitle');
+            d.classList.add('subtitle');
+        } else if (i == 0 && rowNum == 8) {
+            d.classList.add('yTitle');
+        } else if (i > 1 && rowNum < 16) {
+            d.classList.add('color');
+            d.innerHTML = CONTENT;
+        } else {
+            d.classList.add('blank');
+            d.innerHTML = BLANK;
+        }
+        div.appendChild(d);
+    }
+    return div;
+}
+
+function createRow(rowElem, rowNum) {
+    rowElem.setAttribute('class', 'row');
+    if (rowNum == 17) {
+        const d = createDiv();
+        d.classList.add('xTitle');
+        rowElem.appendChild(d);
+    } else {
+        rowElem.appendChild(createCells(rowNum))
+    }
+}
+
+function createTable() {
+    const div = createDiv();
+    for (var i=0; i<18; i++) {
+        createRow(div, i);
+    }
+    return div;
+}
+
+
+function bigAxes() {
+    return [...Array(16).keys()].map(v => Number(v).toString(16).toUpperCase()+'0');
+}
+
+function ltlXAxes() {
+    return [...Array(16).keys()].reverse().map(v => ('0' + Number(bigR+v).toString(16)).slice(-2).toUpperCase());
+}
+
+function ltlYAxes() {
+    return [...Array(16).keys()].map(v => ('0' + Number(bigG+v).toString(16)).slice(-2).toUpperCase());
+}
+
+function setBigTableSubtitles(tbl) {
+    const xVals = [...bigAxes()].reverse();
+    const xElems = tbl.getElementsByClassName('xSubtitle');
+    for (const e of xElems) {
+        e.innerText = xVals.pop();
+    }
+
+    const yVals = bigAxes();
+    const yElems = tbl.getElementsByClassName('ySubtitle');
+    for (const e of yElems) {
+        e.innerText = yVals.pop();
+    }
+}
+
+function setLtlTableSubtitles(tbl) {
+
+    const xVals = ltlXAxes();
+    for (const e of tbl.getElementsByClassName('xSubtitle')) {
+        e.innerText = xVals.pop();
+    }
+
+    const yVals = ltlYAxes();
+    for (const e of tbl.getElementsByClassName('ySubtitle')) {
+        e.innerText = yVals.pop();
+    }
+}
+
+function toHex(n) {
+    return ('0'+Number(n).toString(16)).slice(-2);
+}
+
+function setLtlTableColors() {
+    const method = document.getElementById('method').value;
+    const b = parseInt(ltlEnd.getElementsByTagName('input')[0].value);
+    const swap = document.getElementById('swap').checked;
+
+    const rgbs = [];
+    for (var g=0; g<16; g++) {
+        for (var r=15; r>=0; r--) {
+            rgbs.push([bigR+r, bigG+g, bigB+b]);
+        }
+    }
+    const elems = ltlEnd.getElementsByClassName('color');
+    for (const e of elems) {
+        const rgb = rgbs.pop();
+        const bgColor = '#' + rgb.map(v => toHex(v)).join('');
+        const fgColor = getHighestContrast(...rgb, method);
+        e.style.backgroundColor = (swap ? fgColor : bgColor);
+        e.style.color = (swap ? bgColor : fgColor);
+        e.title = [fgColor, bgColor].join(', ');
+    }
+    setLtlTableSubtitles(ltlEnd);
+}
+
+function setBigTableColors() {
+    const method = document.getElementById('method').value;
+    const b = parseInt(bigEnd.getElementsByTagName('input')[0].value);
+    const swap = document.getElementById('swap').checked;
+
+    bigB = b*16;
+
+    const rgbs = [];
+    // Colors will be 'pop()' from array, so generate from lower-right to upper-left.
+    for (var g=0; g<256; g+=16) {
+        for (var r=240; r>=0; r-=16) {
+            rgbs.push([r, g, bigB]);
+        }
+    }
+    const elems = bigEnd.getElementsByClassName('color');
+    for (const e of elems) {
+        const rgb = rgbs.pop();
+        const bgColor = '#' + rgb.map(v => toHex(v)).join('');
+        const fgColor = getHighestContrast(...rgb, method);
+        e.style.backgroundColor = (swap ? fgColor : bgColor);
+        e.style.color = (swap ? bgColor : fgColor);
+        e.title = [fgColor, bgColor].join(', ');
+        e.addEventListener('click', (evt) => {
+            bigR = rgb[0];
+            bigG = rgb[1];
+            bigB = rgb[2];
+            setLtlTableColors();
+        });
+    }
+    setLtlTableColors();
+    compareMethods()
+}
+
+
+function setXTitle(str, tbl) {
+    const elems = tbl.getElementsByClassName('xTitle');
+    if (elems.length) {
+        elems[0].innerText = str;
+    }
+}
+
+function setYTitle(str, tbl) {
+    const elems = tbl.getElementsByClassName('yTitle');
+    if (elems.length) {
+        elems[0].innerHTML = str;
+    }
+}
+
+function makeW3CLookupTable() {
+    for (var b=0; b<256; b+=16) {
+        const layer = [];
+        for (var g=0; g<256; g+=16) {
+            const row = [];
+            for (var r=0; r<256; r+=16) {
+                row.push(contrastW3C(r, g, b) == WHITE ? 1 : 0);
+            }
+            if (g <= 0x80) {
+                layer.push(row.indexOf(0));
+            }
+        }
+        if (b >= 0x30) {
+            LOOKUP.push(layer);
+        }
+    }
+    //console.log(JSON.stringify(LOOKUP));
+}
+
+function init() {
+    bigEnd = gId('bigEnd');
+    ltlEnd = gId('ltlEnd');
+
+    bigEnd.appendChild(createTable());
+    setBigTableSubtitles(bigEnd);
+    setXTitle('RED', bigEnd);
+    setYTitle('G', bigEnd);
+    setBigTableColors();
+
+    ltlEnd.appendChild(createTable());
+    setLtlTableSubtitles(ltlEnd);
+    setXTitle('red', ltlEnd);
+    setYTitle('g', ltlEnd);
+    setLtlTableColors();
+
+    makeW3CLookupTable();
+}
+</script>
+</head>
+<body onload='init()'>
+
+<h1>Exploring methods for color contrast</h1>
+
+<p>
+It is often useful to display text on a colored background.
+Naturally, the text should be visible on the colored background.
+</p>
+
+<p>
+This page examines various methods of choosing a foreground color (i.e. text) for a
+given background color. In most cases, it is assumed that the foreground color
+must either be black or white.
+</p>
+
+<p>
+There are 256^3 = 16,777,216 colors in the (8-bit) RGB color space.
+The two color-grids below allow viewing any color within that space.
+The left color-grid contains 'major' steps where each step is 16 units.
+The right color-grid contains 'minor' steps where each step is 1 unit.
+The 'minor' color-grid is generated by clicking on a square in the 'major' color-grid.
+The RGB values of the foreground and background colors are shown in a tooltip.
+</p>
+
+<p>
+Comparisons between Methods ignores the 'minor' color-grid
+because its colors are so similar.
+</p>
+
+<div>
+    <img src='layers-axes.png' style='vertical-align: top; width: 100px'>
+    <div style='display: inline-block; width: 40%'>
+    Increasing the 'BLUE' value (in the major color-grid) or the 'blue' value
+    (in the minor color-grid) increases the blue component of all background colors
+    in the color-grid.
+    </div>
+</div>
+
+<br>
+
+<div class='params'>
+
+<table border=1>
+<tr>
+    <th>Method:</th>
+    <td>
+        <select id='method' onchange='setBigTableColors()'>
+            <option value='bitwiseNot'>BitwiseNot</option>
+            <option value='color'>Color</option>
+            <option value='cone'>Cone</option>
+            <option value='cylinder'>Cylinder</option>
+            <option value='distance'>Distance</option>
+            <option value='slice'>Slice</option>
+            <option value='sphere'>Sphere</option>
+            <option value='w3c'>W3C</option>
+            <option value='approx1'>W3C Approx1</option>
+            <option value='approx2'>W3C Approx2</option>
+            <option value='lookup'>W3C Lookup</option>
+        </select>
+    </td>
+</tr>
+
+<tr>
+    <th>Color:</th>
+    <td>
+        #<input id='color' size=6 value=ff0000 placeholder= 'rrggbb' onchange='setBigTableColors()'></input> <span class='desc'>Only for Color method.</span>
+    </td>
+</tr>
+
+
+<tr>
+    <th>Radius:</th>
+    <td>
+        <input id='radius' type=number size=4 min=0 max=3 step=0.05 value=0.6 placeholder='0.xx' onchange='setBigTableColors()'></input> <span class='desc'>Only for Sphere, Cone, and Cylinder method.</span>
+    </td>
+</tr>
+
+<tr>
+    <th>Height:</th>
+    <td>
+        <input id='height' type=number size=4 min=0 max=10 step=0.05 value=5.00 placeholder='0.xx' onchange='setBigTableColors()'></input> <span class='desc'>Only for Cone method.</span>
+    </th>
+</tr>
+
+<tr>
+    <th>Swap Fg &amp; Bg:</th>
+    <td>
+        <input id='swap' type='checkbox' onchange='setBigTableColors()'></input>
+    </th>
+</tr>
+
+
+<tr>
+    <th>Compared to:</th>
+    <td>
+        <select id='compareMethod' onchange='compareMethods()'>
+            <option value='bitwiseNot'>BitwiseNot</option>
+            <option value='color'>Color</option>
+            <option value='cone'>Cone</option>
+            <option value='cylinder'>Cylinder</option>
+            <option value='distance'>Distance</option>
+            <option value='slice'>Slice</option>
+            <option value='sphere'>Sphere</option>
+            <option value='w3c'>W3C</option>
+            <option value='approx1'>W3C Approx1</option>
+            <option value='approx2'>W3C Approx2</option>
+            <option value='lookup'>W3C Lookup</option>
+        </select>
+        <span id='diffcnt'></span>
+    </td>
+</tr>
+
+</table>
+
+</div>
+
+<br>
+
+<div id='bigEnd'>
+  <center>
+    BLUE: <input type='number' min=0 max=15 value=0 onchange='setBigTableColors()'></input>*16
+  </center>
+</div>
+
+<div id='ltlEnd'>
+  <center>
+    blue: <input id='ltlBlueVal' type='number' min=0 max=15 value=0 onchange='setLtlTableColors()'></input>
+  </center>
+</div>
+
+
+
+<div class='method'>
+    <h2>Color Method</h2>
+
+    <p>
+    Use a single color for the foreground color.
+    </p>
+
+    <p>
+    If any color other than black or white is used, this method differs from the W3C Method by 4096 squares.<br>
+    If the color is white is used, this method differs from the W3C Method by 2448 squares.<br>
+    If the color is black is used, this method differs from the W3C Method by 1648 squares.<br>
+    </p>
+
+    <p>
+    A single color is not going to be readable against all possible background
+    colors, but can work fine if the background colors are restricted.
+    </p>
+</div>
+
+<div class='method'>
+    <h2>BitwiseNot Method</h2>
+
+    <p>
+    Use the inverted background color as the foreground color.
+    </p>
+
+    <p>
+    This method differs from the W3C Method by 4095 squares. The only
+    square in common is a black background with a white foreground.
+    </p>
+
+    <p>
+    This method works well for any color that is not near gray. This text:
+    <span style='background-color: #808080; color: #7f7f7f;'> BitwiseNot </span>
+    illustrates the worst case. It has
+    a foreground color of #7f7f7f and a background color of #808080.
+    </p>
+</div>
+
+
+
+
+<div class='method'>
+    <h2>Distance Method</h2>
+    <img src='distance.png' class='shape'><br>
+
+    <p>
+    Compute the distance to the black point and to the white point. Return
+    whichever point is farthest away.
+    </p>
+
+    <p>
+    This method differs from the W3C Method by 928 squares.
+    </p>
+
+<pre>
+// r, g, b must be in range [0, 255].
+const Rb = Math.pow(r, 2);
+const Gb = Math.pow(g, 2);
+const Bb = Math.pow(b, 2);
+
+const Rw = Math.pow(r-255, 2);
+const Gw = Math.pow(g-255, 2);
+const Bw = Math.pow(b-255, 2);
+
+const distB = Rb + Gb + Bb;
+const distW = Rw + Gw + Bw;
+return (distB < distW ? '#ffffff' : '#000000');
+</pre>
+</div>
+
+
+
+<div class='method'>
+    <h2>Sphere Method</h2>
+
+    <img src='sphere.png' class='shape'><br>
+
+    <p>
+    All squares within the sphere are white. All other squares are black.
+    </p>
+
+    <p>
+    A radius of 0.84 differs from the W3C Method by 802 squares.
+    </p>
+
+<pre>
+// r, g, b must be in range [0, 255].
+const radius = 0.84; // Arbitrary.
+
+const R = Math.pow(r/255, 2);
+const G = Math.pow(g/255, 2);
+const B = Math.pow(b/255, 2);
+
+const dist = Math.sqrt(R + G + B);
+return (dist <= radius ? '#ffffff' : '#000000');
+</pre>
+</div>
+
+
+
+
+<div class='method'>
+    <h2>Cylinder Method</h2>
+    <img src='cylinder.png' class='shape'><br>
+
+    <p>
+    All squares within the cylinder are white. All other squares are black.
+    </p>
+
+    <p>
+    A radius of 0.63 differs from the W3C Method by 554 squares.
+    </p>
+
+<pre>
+// r, g, b must be in range [0, 255].
+const radius = 0.63; // Arbitrary.
+
+const R = Math.pow(r/255, 2);
+const G = Math.pow(g/255, 2);
+const B = 0;
+
+const dist = Math.sqrt(R + G + B);
+return (dist <= radius ? '#ffffff' : '#000000');
+</pre>
+</div>
+
+
+
+<div class='method'>
+    <h2>Slice Method</h2>
+    <img src='slice.png' class='shape'><br>
+
+    <p>
+    Divides the color cube into two parts. All points in one part are white. All other points are black.
+    </p>
+
+    <p>
+    If all points where g <= 96 are white, this method differs from the W3C Method by 504 squares.
+    </p>
+
+<pre>
+// g must be in range [0, 255].
+// 96 = 0x60
+return (g <= 96 ? '#ffffff' : '#000000');
+</pre>
+
+    <p>
+    Adding a second (vertical) slice can improve on a single slice.
+    </p>
+
+    <img src='rectangle.png' class='shape'><br>
+
+
+    <p>
+    If r <= 192 and g <= 112, this method differs from the W3C Method by 282 squares.
+    </p>
+
+<pre>
+// r and g must be in range [0, 255].
+// 192 = 0xC0; 112 = 0x70
+return ((r <= 192 && g <= 112) ? '#ffffff' : '#000000');
+</pre>
+
+    <p>
+    Adding a third (horizontal) slice in order to restrict the blue values will not
+    offer any improvement. However, modifying where the red and green slices occur
+    depending on the blue value can improve the 'fit'.
+    </p>
+
+</div>
+
+
+<div class='method'>
+    <h2>Cone Method</h2>
+    <img src='cone.png' class='shape'><br>
+
+    <p>
+    All squares within the cone are white. All other squares are black.
+    </p>
+
+    <p>
+    With an offset of zero, a radius of 0.70, and a height of 5.02, this Method differs from the W3C Method by 544 squares.<br>
+    With an offset of 48, a radius of 0.61, and a height of 4.50, this Method differs from the W3C Method by 276 squares.
+    </p>
+
+    <p>
+    The code below uses an offset cone which gives slightly better results
+    than a cone that is not offset.
+    </p>
+
+<pre>
+// r, g, b must be in range [0, 255].
+const coneRadius = 0.61;
+const coneHeight = 4.45;
+
+const R = Math.pow((r-48)/255, 2); // Subtract 48 to shift cone to the right.
+const G = Math.pow(g/255, 2);
+const B = b/255.0;
+
+const radius = Math.sqrt(R + G);
+const scaledRadius = coneRadius * (coneHeight - B)/coneHeight;
+
+return (radius < scaledRadius ? '#ffffff' : '#000000');
+</pre>
+
+</div>
+
+
+
+
+
+
+
+
+
+<div class='method'>
+    <h2>W3C Approx Method</h2>
+
+    <p>
+    Uses a formula to approximate the W3C Method.
+    </p>
+
+    <p>
+    This method offers two different formulas.
+    Both formulas use 'magic' values (just like the W3C Method) but are
+    much simpler than the W3C Method.
+    One formula differs from the W3C Method by 91 squares.
+    The other formula differs from the W3C Method by 86 squares.
+    </p>
+
+<pre>
+                y^4 = x                                  // This curve looks like a good fit. (x^3 could also work.)
+                g^4 = r                                  // Adapt curve to the red-green axes.
+                g^4 = -r                                 // Negate r to reflect the curve about the g axis.
+                g^4 = S     -   r                        // Subtract r from a constant to shift curve left.
+                g^4 = S     -   r     -      C*b         // Shift curve to the left as the blue value increases.
+            (H*g)^4 = S     -   r     -      C*b         // Larger H 'opens' the curve. Smaller H 'squeezes' the curve.
+      (H*(g/255))^4 = S     - (r/255) -    C*(b/255)     // Scale the r, g, and b color values.
+((H/255)*(g/255))^4 = S/255 - (r/255) - (C/255)*(b/255)  // Scale the S, H and C constants.
+((H/255)*(g/255))^4 =   (S - r)/255   -  b*C/(255*255)   // Re-arrange.
+</pre>
+
+    <p>
+    Values for S, H, C must be found that 'fit' the W3C surface as closely as possible.
+    Looking at the color-grid for the W3C Method:
+    </p>
+
+<ul>
+    <li>When the blue and green values are
+    zero, the red value is 0xE0 = 224. So, the equation above reduces to
+    <tt>0 = (S - r)/255 = (S-224)/255</tt>, which means <b>S = 224</b>.
+    </li>
+    <li>When the blue value
+    is 0xF0 = 240 and green value is zero, the red value is 0xC0 = 192. So, using S = 224, the equation
+    above reduces to <tt>0 = (224-192)/255 - 240*C/(255*255)</tt>, which means <b>C = 34</b>.
+    </li>
+    <li>When the blue and red values are zero, the green value is
+    0x80 = 128. So, using S = 224 and C = 34, the equation above reduces to <tt>(H*128/(255*255))^4 = 224/255</tt>,
+    which means <b>H = 492</b>.
+    </li>
+</ul>
+
+    <p>
+    Using (224, 492, 34) for (S, H, C) generate a surface
+    that differs from the W3C Method
+    by 194 squares. Using (224, 492, 34) as a starting point,
+    a computer
+    search finds three tuples: (<b>238</b>, <b>448</b>, <b>52</b>), (241, 459, 52), and (242, 455, 53)
+    that differ from the W3C Method by 86 squares.
+    The first tuple is arbitrarily chosen for the (S, H, C) constants.
+    </p>
+
+<pre>
+  ((<b>448</b>/255)*(g/255))^4 = (<b>238</b> - r)/255 - b*<b>52</b>/(255*255)                // Substitute constants
+    (448^4/255^8) * g^4 = (238 - r)/255          - b*52/(255*255)       // Re-arrange
+    (448^4/255^6) * g^4 = 255*(238 - r)          - b*52                 // Multiply by 255*255
+(448^4/(52*255^6) * g^4 = 255*238/52 - r*255/52  - b                    // Divide by 52
+     g^4 / 354921.55062 = 1167.11538 - 4.90385*r - b                    // Evaluate
+                      0 = 1167.11538 - 4.90385*r - b - g^4/354921.55062 // Re-arrange
+</pre>
+
+    <p>
+    Converting the equation to an inequality expression in a Javascript function gives:
+    </p>
+
+<pre>
+// <b>FORMULA 1</b> (Differs from the W3C Method by 86 squares.)
+// r, g, b must be in range [0, 255].
+return (0 &lt; 1167.11538  - 4.90385*r - b - Math.pow(g, 4) / 354921.55062 ? "#ffffff" : "#000000");
+</pre>
+
+    <p>
+    With a bit of rounding, Formula 1 can be simplified, but results in a
+    slightly less accurate surface.
+    </p>
+
+<pre>
+// <b>FORMULA 2</b> (Differs from the W3C Method by 91 squares.)
+// r, g, b must be in range [0, 255].
+return (0 &lt; 1200 - 5*r - b - Math.pow(g/24, 4) ? "#ffffff" : "#000000");
+</pre>
+
+    <p>
+    By coincidence, the constants are somewhat connected: 5 * 24 * 10 = 1200.
+    </p>
+
+</div>
+
+
+
+<div class='method'>
+    <h2>W3C Lookup Method</h2>
+
+    <p>
+    Uses a lookup table to approximate the W3C Method.
+    </p>
+
+    <p>
+    This Method is about ten times faster than the (unoptimized) W3C Method
+    and differs from it by zero squares. (i.e. This Method exactly matches the
+    surface of the W3C Method, excluding the minor color-grid.)
+    </p>
+
+    <p>
+    The squares in each layer of the minor color-grid will be either
+    all black or all white. This is not true of the W3C Method.
+    </p>
+
+<pre>
+// r, g, b must be in range [0, 255].
+const lookupTable = [
+    [15,15,15,14,14,13,12,10,6],
+    [15,15,15,14,14,13,11,10,6],
+    [15,15,15,14,14,13,11, 9,6],
+    [15,15,15,14,13,13,11, 9,5],
+    [15,15,14,14,13,12,11, 9,5],
+    [15,15,14,14,13,12,11, 9,4],
+    [15,14,14,14,13,12,11, 8,3],
+    [14,14,14,13,13,12,10, 8,0],
+    [14,14,14,13,12,11,10, 7,0],
+    [14,14,13,13,12,11, 9, 7,0],
+    [13,13,13,13,12,11, 9, 6,0],
+    [13,13,13,12,11,10, 8, 4,0],
+    [13,13,12,12,11, 9, 7, 1,0]
+]
+const R = parseInt(r/16);
+const G = parseInt(g/16);
+const B = Math.max(parseInt(b/16) - 3, 0);
+if (G >= 9) return '#000000';
+return (R < lookupTable[B][G] ? '#ffffff' : '#000000');
+</pre>
+</div>
+
+
+
+
+
+
+<div class='method'>
+    <h2>W3C Method</h2>
+
+    <p>
+    This is a model developed by W3C and is the standard by which all Methods
+    on this page are compared.
+    </p>
+
+    <p>
+    The model is not intutitive, and uses 'magic' numbers, which are (somewhat) arbitrary.
+    </p>
+
+    <p>
+    The W3C's defines the <a href='https://www.w3.org/TR/WCAG20/#relativeluminancedef'>Relative Luminance</a>
+    of a color, which can be computed with the following Javascript functions:
+    </p>
+
+<pre>
+// n must be in range [0, 255].
+function scale(n) {
+    const c = n / 255.0;
+    if (c <= 0.03928) {
+        return c / 12.92;
+    }
+    return Math.pow(((c + 0.055) / 1.055),  2.4);
+}
+
+// r, g, b must be in range [0, 255].
+function relativeLuminance(r, g, b) {
+    const R = scale(r);
+    const G = scale(g);
+    const B = scale(b);
+
+    // 0.2126 + 0.7152 + 0.0722 = 1.0000
+    return (0.2126 * R) + (0.7152 * G) + (0.0722 * B);
+}
+</pre>
+
+
+    <p>
+    W3C defines the <a href='https://www.w3.org/TR/WCAG20/#contrast-ratiodef'>Contrast Ratio</a>
+    of two colors to be:
+    </p>
+
+<pre>
+L1 + 0.05
+-----------
+L2 + 0.05
+</pre>
+
+    <p>
+    where, L1 is the Relative Luminance of the lighter of the colors,<br>
+    and L2 is the Relative Luminance of the darker of the colors.
+    </p>
+
+    <p>
+    The RL(x) function returns the Relative Luminance of color 'x'.
+    </p>
+
+<pre>
+    _                                       _
+   |                                         |
+   | RL(WHITE) + 0.05      RL(COLOR) + 0.05  |
+If | ----------------   >  ----------------- | then COLOR has a higher contrast with WHITE than with BLACK.
+   | RL(COLOR) + 0.05      RL(BLACK) + 0.05  |
+   |_                                       _|
+</pre>
+
+    <p>
+    The Relative Luminosity of WHITE is 1.0. The Relative Luminosity of BLACK
+    is 0.0. Computing the Relative Luminosity of COLOR will be postponed.
+    Substituting and simplifing gives:
+    </p>
+
+<pre>
+( RL(WHITE) + 0.05 ) * ( RL(BLACK) + 0.05 ) > ( RL(COLOR) + 0.05 )^2
+
+     ( 1.0  + 0.05 ) * ( 0.0  + 0.05 )      > ( RL(COLOR) + 0.05 )^2
+
+          Sqrt(1.05 * 0.05) - 0.05          > RL(COLOR)
+
+                  0.179129                  > RL(COLOR)
+</pre>
+
+    <p>
+    In other words, if the Relative Luminosity of COLOR is less than 0.178129, than
+    COLOR has greater contrast with WHITE, otherwise COLOR has a greater contrast with BLACK.
+    </p>
+
+    <p>
+    If written as a Javascript function, it would look like this:
+    </p>
+
+<pre>
+// r, g, b must be in range [0, 255].
+return (relativeLuminance(r, g, b) > 0.179129 ? '#ffffff' : '#000000');
+</pre>
+</div>
+
+
+<div class='timings'>
+
+<h2>Timings</h2>
+
+<p>
+The table below shows the Relative Performance for each Method. For example,
+the Distance Method took 11.9 times as long as calling nothing '<i>(None)</i>'.
+The raw timings
+were created by calling each Method for all red, green, and blue values (a
+total of 256^3 = 16,777,216 calls for each Method). The Relative Performance
+values were computed by dividing the raw timings by the time required to call
+no method.
+</p>
+
+<p>
+Diff is the number of squares that differed from the (4096) squares of the W3C Method.
+</p>
+
+<p>
+The table below is informational, not authoritative. The timing methodology was
+simplistic, none of the Method functions
+were optimized and Javascript engines are optimized in different ways.
+</p>
+
+<table border=1>
+  <tr>
+    <th>Method</th>
+    <th>Diff</th>
+    <th>Rel. Perf.</th>
+  </tr>
+  <tr>
+    <td>(None)</td>
+    <td>N/A</td>
+    <td>1.0</td>
+  </tr>
+  <tr>
+    <td>Slice</td>
+    <td>504</td>
+    <td>1.5</td>
+  </tr>
+  <tr>
+    <td>W3CApprox2</td>
+    <td>91</td>
+    <td>5.2</td>
+  </tr>
+  <tr>
+    <td>W3CApprox1</td>
+    <td>86</td>
+    <td>6.0</td>
+  </tr>
+  <tr>
+    <td>Distance</td>
+    <td>928</td>
+    <td>11.9</td>
+  </tr>
+  <tr>
+    <td>W3CLookup</td>
+    <td>0</td>
+    <td>14.3</td>
+  </tr>
+  <tr>
+    <td>W3C</td>
+    <td>0</td>
+    <td>161.8</td>
+  </tr>
+  <tr>
+    <td>Color</td>
+    <td>1648</td>
+    <td>184.6</td>
+  </tr>
+  <tr>
+    <td>BitwiseNot</td>
+    <td>4095</td>
+    <td>217.4</td>
+  </tr>
+  <tr>
+    <td>Cylinder</td>
+    <td>554</td>
+    <td>415.4</td>
+  </tr>
+  <tr>
+    <td>Sphere</td>
+    <td>802</td>
+    <td>417.3</td>
+  </tr>
+  <tr>
+    <td>Cone</td>
+    <td>276</td>
+    <td>846.4</td>
+  </tr>
+</table>
+
+</div>
+
+</body>
+</html>
