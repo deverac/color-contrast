@@ -104,7 +104,10 @@ function not(n) {
 
 
 
-
+// A 'dummy' method used for performance testing.
+function contrastNone(r, g, b) {
+    return '#888888';
+}
 
 
 function contrastBitwiseNot(r, g, b) {
@@ -162,6 +165,22 @@ function contrastDistance(r, g, b) {
     return (distB < distW ? WHITE : BLACK);
 }
 
+function contrastDiagonal(r, g, b) {
+    const R = (r > 127 ? 0 : 255);
+    const G = (g > 127 ? 0 : 255);
+    const B = (b > 127 ? 0 : 255);
+
+    return '#' + toHex(R) + toHex(G) + toHex(B);
+}
+
+function contrastDiagonalBW(r, g, b) {
+    const R = (r > 127 ? 0 : 255);
+    const G = (g > 127 ? 0 : 255);
+    const B = (b > 127 ? 0 : 255);
+
+    return ( R + G + B <= 255 ? '#000000' : '#ffffff')
+}
+
 function contrastSphere(r, g, b) {
     const str = document.getElementById('radius').value || '';
 
@@ -208,6 +227,8 @@ function getHighestContrast(r, g, b, method) {
         case 'color': return contrastColor(r, g, b);
         case 'cone': return contrastCone(r, g, b);
         case 'cylinder': return contrastCylinder(r, g, b);
+        case 'diagonal': return contrastDiagonal(r, g, b);
+        case 'diagonalBW': return contrastDiagonalBW(r, g, b);
         case 'distance': return contrastDistance(r, g, b);
         case 'lookup': return contrastW3CLookup(r, g, b);
         case 'sphere': return contrastSphere(r, g, b);
@@ -239,8 +260,88 @@ function compareMethods() {
 }
 
 
+function computeMethodPerformance() {
+    const methods = [
+        '',
+        'bitwiseNot',
+        'color',
+        'cone',
+        'cylinder',
+        'diagonal',
+        'diagonalBW',
+        'distance',
+        'slice',
+        'sphere',
+        'w3c',
+        'approx1',
+        'approx2',
+        'lookup',
+    ];
 
+    let ref;
 
+    // Unfortunately, timing the methods with something like:
+    //
+    //     for (const methodName of methods) {
+    //         for (var r=0, ..) {
+    //             for (var g=0, ..) {
+    //                 for (var b=0, ..) {
+    //                     getHighestContrast(r, g, b, methodName);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //
+    // can not measure performance because the 'getHighestContrast()' function
+    // is called millions of times and dominates the timing, which causes all
+    // methods to take about the same amount of time.
+
+    const results = [];
+    console.log(' Num  |   MethodName    |  MSec  | Rel.Perf.');
+    for (var n = 0; n< methods.length; n++) {
+        const beg = new Date().getTime();
+        for (var r=0; r<256; r++) {
+            for (var g=0; g<256; g++) {
+                for (var b=0; b<256; b++) {
+                    switch(n) {
+                        case  0: contrastNone(r, g, b);  break;
+                        case  1: contrastBitwiseNot(r, g, b);  break;
+                        case  2: contrastColor(r, g, b); break;
+                        case  3: contrastCone(r, g, b); break;
+                        case  4: contrastCylinder(r, g, b); break;
+                        case  5: contrastDiagonal(r, g, b); break;
+                        case  6: contrastDiagonalBW(r, g, b); break;
+                        case  7: contrastDistance(r, g, b); break;
+                        case  8: contrastSlice(r, g, b); break;
+                        case  9: contrastSphere(r, g, b); break;
+                        case 10: contrastW3C(r, g, b); break;
+                        case 11: contrastW3CApprox1(r, g, b); break;
+                        case 12: contrastW3CApprox2(r, g, b); break;
+                        case 13: contrastW3CLookup(r, g, b); break;
+                    }
+                }
+            }
+        }
+        const end = new Date().getTime();
+
+        const duration = (end - beg);
+        let methodName = methods[n];
+        if (!methodName) {
+            ref = duration;
+            methodName = '(None)';
+        }
+        const paddedMethodName = (methodName + ' '.repeat(15)).substring(0,15);
+        results.push([paddedMethodName, duration, duration/ref]);
+        console.log('%2d/%d | %s | %6i | %12f', (n+1), methods.length,  paddedMethodName, duration, duration/ref);
+    }
+
+    const sortedByRelPerf  = results.sort((a, b) => { return a[2] - b[2]; })
+    console.log('---------- Sorted by Relative Performance ----------');
+    console.log('   MethodName    |  MSec  | Rel.Perf.');
+    for (const tup of sortedByRelPerf) {
+        console.log('%s | %6i | %12f',  tup[0], tup[1], tup[2]);
+    }
+}
 
 
 
@@ -306,11 +407,11 @@ function bigAxes() {
 }
 
 function ltlXAxes() {
-    return [...Array(16).keys()].reverse().map(v => ('0' + Number(bigR+v).toString(16)).slice(-2).toUpperCase());
+    return [...Array(16).keys()].reverse().map(v => toHex(bigR+v).toUpperCase());
 }
 
 function ltlYAxes() {
-    return [...Array(16).keys()].map(v => ('0' + Number(bigG+v).toString(16)).slice(-2).toUpperCase());
+    return [...Array(16).keys()].map(v => toHex(bigG+v).toUpperCase());
 }
 
 function setBigTableSubtitles(tbl) {
@@ -340,6 +441,7 @@ function setLtlTableSubtitles(tbl) {
     }
 }
 
+// Convert number in range [0, 255] to hex value.
 function toHex(n) {
     return ('0'+Number(n).toString(16)).slice(-2);
 }
@@ -451,6 +553,9 @@ function init() {
     setLtlTableColors();
 
     makeW3CLookupTable();
+
+    // Uncomment to time all methods. Results are printed to console.
+    //computeMethodPerformance();
 }
 </script>
 </head>
@@ -505,6 +610,8 @@ because its colors are so similar.
             <option value='color'>Color</option>
             <option value='cone'>Cone</option>
             <option value='cylinder'>Cylinder</option>
+            <option value='diagonal'>Diagonal</option>
+            <option value='diagonalBW'>Diagonal B&amp;W</option>
             <option value='distance'>Distance</option>
             <option value='slice'>Slice</option>
             <option value='sphere'>Sphere</option>
@@ -555,6 +662,8 @@ because its colors are so similar.
             <option value='cone'>Cone</option>
             <option value='cylinder'>Cylinder</option>
             <option value='distance'>Distance</option>
+            <option value='diagonal'>Diagonal</option>
+            <option value='diagonalBW'>Diagonal B&amp;W</option>
             <option value='slice'>Slice</option>
             <option value='sphere'>Sphere</option>
             <option value='w3c'>W3C</option>
@@ -605,6 +714,9 @@ because its colors are so similar.
     </p>
 </div>
 
+
+
+
 <div class='method'>
     <h2>BitwiseNot Method</h2>
 
@@ -623,6 +735,52 @@ because its colors are so similar.
     illustrates the worst case. It has
     a foreground color of #7f7f7f and a background color of #808080.
     </p>
+</div>
+
+
+
+
+<div class='method'>
+    <h2>Diagonal Method</h2>
+    <img src='diagonal.png' class='shape'><br>
+
+    <p>
+    Partitions the RGB color-space into eight, sub-cubes (i.e. a 2x2x2 cube). The foreground color
+    of each sub-cube matches the RGB color that is farthest away on the long diagonal.
+    </p>
+
+    <p>
+    This method differs from the W3C Method by 3072 squares.
+    </p>
+
+    <p>
+    This method uses eight foreground colors, instead of using only black or white.
+    </p>
+
+<pre>
+// r, g, b must be in range [0, 255].
+const R = (r > 127 ? 0 : 255);
+const G = (g > 127 ? 0 : 255);
+const B = (b > 127 ? 0 : 255);
+
+return '#' + [R, G, B].map(v => ('0'+Number(v).toString(16)).slice(-2)).join('');
+</pre>
+
+    <p>
+    One possibility for using only black or white as the foreground color is
+    given below. It differs from the W3C Method by 906 squares.
+    </p>
+
+<pre>
+// Use only black or white as the foreground colors.
+// r, g, b must be in range [0, 255].
+const R = (r > 127 ? 0 : 255);
+const G = (g > 127 ? 0 : 255);
+const B = (b > 127 ? 0 : 255);
+
+return ( R + G + B <= 255 ? '#000000' : '#ffffff')
+</pre>
+
 </div>
 
 
@@ -656,6 +814,7 @@ const distW = Rw + Gw + Bw;
 return (distB < distW ? '#ffffff' : '#000000');
 </pre>
 </div>
+
 
 
 
@@ -715,6 +874,7 @@ return (dist <= radius ? '#ffffff' : '#000000');
 
 
 
+
 <div class='method'>
     <h2>Slice Method</h2>
     <img src='slice.png' class='shape'><br>
@@ -759,6 +919,8 @@ return ((r <= 192 && g <= 112) ? '#ffffff' : '#000000');
 </div>
 
 
+
+
 <div class='method'>
     <h2>Cone Method</h2>
     <img src='cone.png' class='shape'><br>
@@ -793,11 +955,6 @@ return (radius < scaledRadius ? '#ffffff' : '#000000');
 </pre>
 
 </div>
-
-
-
-
-
 
 
 
@@ -890,10 +1047,11 @@ return (0 &lt; 1200 - 5*r - b - Math.pow(g/24, 4) ? "#ffffff" : "#000000");
 </pre>
 
     <p>
-    By coincidence, the constants are somewhat connected: 5 * 24 * 10 = 1200.
+    By coincidence, three of the constants are somewhat connected: 5 * 24 * 10 = 1200.
     </p>
 
 </div>
+
 
 
 
@@ -939,7 +1097,6 @@ if (G >= 9) return '#000000';
 return (R < lookupTable[B][G] ? '#ffffff' : '#000000');
 </pre>
 </div>
-
 
 
 
@@ -1045,13 +1202,15 @@ return (relativeLuminance(r, g, b) > 0.179129 ? '#ffffff' : '#000000');
 </div>
 
 
+
+
 <div class='timings'>
 
 <h2>Timings</h2>
 
 <p>
 The table below shows the Relative Performance for each Method. For example,
-the Distance Method took 11.9 times as long as calling nothing '<i>(None)</i>'.
+the Distance Method took 6.9 times as long as calling nothing '<i>(None)</i>'.
 The raw timings
 were created by calling each Method for all red, green, and blue values (a
 total of 256^3 = 16,777,216 calls for each Method). The Relative Performance
@@ -1086,54 +1245,64 @@ were optimized and Javascript engines are optimized in different ways.
     <td>1.5</td>
   </tr>
   <tr>
-    <td>W3CApprox2</td>
-    <td>91</td>
-    <td>5.2</td>
-  </tr>
-  <tr>
     <td>W3CApprox1</td>
     <td>86</td>
-    <td>6.0</td>
+    <td>4.1</td>
+  </tr>
+  <tr>
+    <td>W3CApprox2</td>
+    <td>91</td>
+    <td>4.2</td>
+  </tr>
+  <tr>
+    <td>Diagonal B&amp;W</td>
+    <td>906</td>
+    <td>5.6</td>
   </tr>
   <tr>
     <td>Distance</td>
     <td>928</td>
-    <td>11.9</td>
+    <td>6.9</td>
   </tr>
   <tr>
     <td>W3CLookup</td>
     <td>0</td>
-    <td>14.3</td>
+    <td>11.0</td>
+  </tr>
+  <tr>
+    <td>Diagonal</td>
+    <td>3072</td>
+    <td>68.0</td>
   </tr>
   <tr>
     <td>W3C</td>
     <td>0</td>
-    <td>161.8</td>
-  </tr>
-  <tr>
-    <td>Color</td>
-    <td>1648</td>
-    <td>184.6</td>
+    <td>150.9</td>
   </tr>
   <tr>
     <td>BitwiseNot</td>
     <td>4095</td>
-    <td>217.4</td>
+    <td>169.8</td>
+  </tr>
+  <tr>
+    <td>Color</td>
+    <td>1648</td>
+    <td>192.0</td>
   </tr>
   <tr>
     <td>Cylinder</td>
     <td>554</td>
-    <td>415.4</td>
+    <td>377.5</td>
   </tr>
   <tr>
     <td>Sphere</td>
     <td>802</td>
-    <td>417.3</td>
+    <td>396.2</td>
   </tr>
   <tr>
     <td>Cone</td>
     <td>276</td>
-    <td>846.4</td>
+    <td>760.3</td>
   </tr>
 </table>
 
